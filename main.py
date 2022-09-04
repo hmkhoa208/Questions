@@ -12,9 +12,8 @@ from docx.shared import Cm
 from Chapter import Chapter
 import csv
 import concurrent.futures
-import os
-import shutil
-
+import os.path
+from os import path
 
 
 subjectURLDict = {
@@ -43,7 +42,7 @@ def getSoup(site):
 	# driver = webdriver.Firefox()
 	# driver.maximize_window()
 	driver.get(site)
-	time.sleep(5)
+	time.sleep(2)
 	soup = BeautifulSoup(driver.page_source,'lxml')
 	driver.quit()
 	return soup
@@ -56,7 +55,7 @@ def getSoupWithAnswer(site):
 	# driver = webdriver.Firefox()
 	# driver.maximize_window()
 	driver.get(site)
-	time.sleep(5)
+	time.sleep(2)
 
 	# Click để tìm câu trả lời đúng (correct answer)
 	answerList = driver.find_elements(By.CLASS_NAME, 'option-list')
@@ -109,10 +108,10 @@ def writeElementListToCell(_elementList, cell):
 		# string trước đó
 		preString = '' 
 		for string in stringList[:-1]:
-			if '.png' in preString or '~' in preString: # nếu string trước đó là ảnh hay bảng thì xuống đoạn khác
+			element = elementList[0] # lấy element đầu
+			if '.png' in preString and ('=' not in string and (string == '' and 'math' not in element)): # nếu element trước đó là ảnh thì xuống đoạn khác
 				cell.add_paragraph()
 			cell.paragraphs[-1].add_run(string) # duyệt các string sau khi cắt chuối text
-			element = elementList[0]
 			if 'math' in element:
 				try:
 					cell.paragraphs[-1]._element.append(mathlmToWord(element))
@@ -132,7 +131,7 @@ def writeElementListToCell(_elementList, cell):
 
 			preString = elementList.pop(0)
 
-		if '.png' in preString or '~' in preString:
+		if '.png' in preString and ('=' not in string and (string == '' and 'math' not in element)):
 			cell.add_paragraph().add_run(stringList[-1])
 		else:
 			cell.paragraphs[-1].add_run(stringList[-1])
@@ -259,117 +258,142 @@ def getQuestionsOnePage(pageURL, chapterName):
 		q = Question('', [''], [''], [''], [''], [''], [''], '')
 
 		# get Question No
-		q.qNo = questionHtml.find_all('div', class_='question-tag')[0].text.replace('Q', '').replace(':', '').strip()
+		q.qNo = questionHtml.find('div', class_='question-tag').text.replace('Q', '').replace(':', '').strip()
 		print(q.qNo)
 
-		imageCount = 1
+		questionTextHtml = questionHtml.find('div', class_='question-text').find('span')
+
+		# bỏ thẻ <br>
+		for br in questionTextHtml('br'):
+			br.replace_with('\n')
+
 		# get Question text and table
-		textHtml = questionHtml.find_all('div', class_='question-text')[0].find_all('span')[0].find_all(recursive=False)
-		for element in textHtml:
 
-			questionTextList = []
+		# lấy textHtml sau khi bỏ thẻ br:
+		textHtml = questionTextHtml.find_all(recursive=False)
 
-			# lấy table
-			if element.name == 'table':
-				questionTextList.append(htmlTableToText(element))
 
-			# lấy thẻ p
-			elif element.name == 'p':
-				# bỏ thẻ p có từ 2 &nbsp; trở lên
-				if '\xa0\xa0' in str(element) or '\xa0 \xa0' in str(element):
-					element.extract()
-					break
+		if len(textHtml) == 0:
+			allText = questionTextHtml.text.replace('\xa0', '')
+			stringList = re.split(r'\n *1.|\n *\(1\)|\n *2.|\n *\(2\)|\n *3.|\n *\(3\)|\n *4.|\n *\(4\)|\n *5.|\n *\(5\)',allText)
+			print(stringList[0])
+			q.text[0] = stringList[0]
+			q.a[0] = stringList[1]
+			q.b[0] = stringList[2]
+			q.c[0] = stringList[3]
+			q.d[0] = stringList[4]
+			if len(stringList) > 5:
+				q.e[0] = stringList[5]
 
-				# Lấy tất cả element con trực tiếp của mỗi thẻ p (diagram, mathjax)
-				childElements = element.find_all(recursive=False)
+		else:
+			imageCount = 1
 
-				# nếu có element con
-				if len(childElements) > 0:
-					for child in childElements:
-						if child.name == 'span' and child.has_attr('class') and child['class'][0] == 'mjx-chtml': # con là span và class MathJax
-							questionTextList.append(child['data-mathml'])		# nối chuỗi MathJax vào questionTextList
-							child.replace_with('<math>')	# thay tag span thành <math>
+			for element in textHtml: # mỗi element là 1 thẻ trong question-text
 
-						elif child.name == 'img': # con là img
-							try:
-								img_data = requests.get(child['src']).content
-								with open('Images/' + chapterName + '_' + q.qNo + '_' + str(imageCount) + '.png', 'wb') as handler: # ghi file ảnh
-									handler.write(img_data)
-								questionTextList.append('Images/' + chapterName + '_' + q.qNo + '_' + str(imageCount) + '.png') # nối path của ảnh vào questionTextList
-								child.replace_with('<img>')	# thay tag img thành <img>
-								imageCount += 1
-							except:
-								child.extract()
-								print('Error image: ' + q.qNo + '_' + chapterName)
-								pass
-								
-						elif child.name == 'b' or child.name == 'i' or (child.name == 'span' and child.text is not None): 
-							child.replace_with(child.text)
+				questionTextList = []
 
-						else: #còn lại xóa đi
-							child.extract()
+				# lấy table
+				if element.name == 'table':
+					questionTextList.append(htmlTableToText(element))
 
-				# sau cùng chèn p text vào đầu questionTextList
-				if element.text != '':
-					questionTextList.insert(0, element.text)
+				# lấy thẻ p
+				elif element.name == 'p':
+					# bỏ thẻ p có từ 2 &nbsp; trở lên
+					# if '\xa0\xa0' in str(element) or '\xa0 \xa0' in str(element):
+					# 	element.decompose()
+					# 	break
 
-			# nếu không có text trong questionTextList
-			if len(questionTextList) == 0:
-				continue
+					# Lấy tất cả element con trực tiếp của mỗi thẻ p (diagram, mathjax)
+					childElements = element.find_all(recursive=False)
 
-			# xét questionText để phân loại là text hoặc các option
-			try:
-				if '1.' in questionTextList[0] and questionTextList[0].index('1.') == 0:
-					questionTextList[0] = questionTextList[0][2:].strip()
-					q.a = questionTextList
-				elif '(1)' in questionTextList[0] and questionTextList[0].index('(1)') == 0:
-					questionTextList[0] = questionTextList[0][3:].strip()
-					q.a = questionTextList
-				elif '2.' in questionTextList[0] and questionTextList[0].index('2.') == 0:
-					questionTextList[0] = questionTextList[0][2:].strip()
-					q.b = questionTextList
-				elif '(2)' in questionTextList[0] and questionTextList[0].index('(2)') == 0:
-					questionTextList[0] = questionTextList[0][3:].strip()
-					q.b = questionTextList
-				elif '3.' in questionTextList[0] and questionTextList[0].index('3.') == 0:
-					questionTextList[0] = questionTextList[0][2:].strip()
-					q.c = questionTextList
-				elif '(3)' in questionTextList[0] and questionTextList[0].index('(3)') == 0:
-					questionTextList[0] = questionTextList[0][3:].strip()
-					q.c = questionTextList
-				elif '4.' in questionTextList[0] and questionTextList[0].index('4.') == 0:
-					questionTextList[0] = questionTextList[0][2:].strip()
-					q.d = questionTextList
-				elif '(4)' in questionTextList[0] and questionTextList[0].index('(4)') == 0:
-					questionTextList[0] = questionTextList[0][3:].strip()
-					q.d = questionTextList
-				elif '5.' in questionTextList[0] and questionTextList[0].index('5.') == 0:
-					questionTextList[0] = questionTextList[0][2:].strip()
-					q.e = questionTextList
-				elif '(5)' in questionTextList[0] and questionTextList[0].index('(5)') == 0:
-					questionTextList[0] = questionTextList[0][3:].strip()
-					q.e = questionTextList
-				elif '|' in questionTextList[0] and '_' in questionTextList[0]: # nếu là bảng và qText không rỗng
-					if q.text[0] != '':
-						q.text[0] += '<table>'
-						q.text.append(questionTextList[0])
-						if '|2._' in questionTextList[0] or '|(2)_' in questionTextList[0] : # nếu là bảng trả lời
-							q.a = ['1']
-							q.b = ['2']
-							q.c = ['3']
-							q.d = ['4']
-							q.e = ['5']
+					# nếu có element con
+					if len(childElements) > 0:
+						for child in childElements:
+							if child.name == 'span' and child.has_attr('class') and child['class'][0] == 'mjx-chtml': # con là span và class MathJax
+								questionTextList.append(child['data-mathml'])		# nối chuỗi MathJax vào questionTextList
+								child.replace_with('<math>')	# thay tag span thành <math>
+
+							elif child.name == 'img': # con là img
+								try:
+									img_data = requests.get(child['src'], timeout=2).content
+									with open('Images/' + chapterName + '_' + q.qNo + '_' + str(imageCount) + '.png', 'wb') as handler: # ghi file ảnh
+										handler.write(img_data)
+									questionTextList.append('Images/' + chapterName + '_' + q.qNo + '_' + str(imageCount) + '.png') # nối path của ảnh vào questionTextList
+									child.replace_with('<img>')	# thay tag img thành <img>
+									imageCount += 1
+								except:
+									child.decompose()
+									print('Error image: ' + q.qNo + '_' + chapterName)
+									questionTextList.append('')
+									continue
+									
+							elif child.name == 'b' or child.name == 'i' or (child.name == 'span' and child.text is not None): 
+								child.replace_with(child.text)
+
+							else: #còn lại xóa đi
+								child.decompose()
+
+					# sau cùng chèn p text vào đầu questionTextList
+					if element.text != '':
+						questionTextList.insert(0, element.text.replace('\xa0', ''))
+
+				# nếu không có text trong questionTextList
+				if len(questionTextList) == 0:
+					continue
+
+				# xét questionText để phân loại là text hoặc các option
+				try:
+					if '1.' in questionTextList[0] and questionTextList[0].index('1.') == 0:
+						questionTextList[0] = questionTextList[0][2:].strip()
+						q.a = questionTextList
+					elif '(1)' in questionTextList[0] and questionTextList[0].index('(1)') == 0:
+						questionTextList[0] = questionTextList[0][3:].strip()
+						q.a = questionTextList
+					elif '2.' in questionTextList[0] and questionTextList[0].index('2.') == 0:
+						questionTextList[0] = questionTextList[0][2:].strip()
+						q.b = questionTextList
+					elif '(2)' in questionTextList[0] and questionTextList[0].index('(2)') == 0:
+						questionTextList[0] = questionTextList[0][3:].strip()
+						q.b = questionTextList
+					elif '3.' in questionTextList[0] and questionTextList[0].index('3.') == 0:
+						questionTextList[0] = questionTextList[0][2:].strip()
+						q.c = questionTextList
+					elif '(3)' in questionTextList[0] and questionTextList[0].index('(3)') == 0:
+						questionTextList[0] = questionTextList[0][3:].strip()
+						q.c = questionTextList
+					elif '4.' in questionTextList[0] and questionTextList[0].index('4.') == 0:
+						questionTextList[0] = questionTextList[0][2:].strip()
+						q.d = questionTextList
+					elif '(4)' in questionTextList[0] and questionTextList[0].index('(4)') == 0:
+						questionTextList[0] = questionTextList[0][3:].strip()
+						q.d = questionTextList
+					elif '5.' in questionTextList[0] and questionTextList[0].index('5.') == 0:
+						questionTextList[0] = questionTextList[0][2:].strip()
+						q.e = questionTextList
+					elif '(5)' in questionTextList[0] and questionTextList[0].index('(5)') == 0:
+						questionTextList[0] = questionTextList[0][3:].strip()
+						q.e = questionTextList
+					elif '|' in questionTextList[0] and '_' in questionTextList[0]: # nếu là bảng và qText không rỗng
+						if q.text[0] != '':
+							q.text[0] += '<table>'
+							q.text.append(questionTextList[0])
+							if '|2._' in questionTextList[0] or '|(2)_' in questionTextList[0] : # nếu là bảng trả lời
+								q.a = ['1']
+								q.b = ['2']
+								q.c = ['3']
+								q.d = ['4']
+								q.e = ['5']
+						else:
+							continue
 					else:
-						continue
-				else:
-					q.text[0] += questionTextList[0]
-					q.text.extend(questionTextList[1:])	# nối thêm questionTextList với các p textList mới
-			except:
-				# đặt q.text là list với chuỗi rỗng
-				q.text = ['']
+						q.text[0] += questionTextList[0]
+						q.text.extend(questionTextList[1:])	# nối thêm questionTextList với các p textList mới
+				except:
+					# đặt q.text là list với chuỗi rỗng
+					q.text = ['']
 
-				print('Error qText: ' + q.qNo + '_' + chapterName)
-				pass
+					print('Error qText: ' + q.qNo + '_' + chapterName)
+					pass
 
 		# get correct answer
 		if len(questionHtml.find_all('div', class_='_2eaw _2kqr')) > 0:
@@ -410,21 +434,29 @@ if __name__ == '__main__':
 		reader = csv.reader(file)
 		for row in reader:
 			chapter = Chapter(*row)
-			if chapter.subjectName == 'Botany':
-				print(chapter.chapterName)
+			if chapter.subjectName == 'Zoology':
+				# print(chapter.chapterName)
 				chapterList.append(chapter)
 
+	# lấy câu hỏi trong 1 chương cụ thể
+	# getQuestionsOfChapter(chapterList[2])
 
-	# getQuestionsOfChapter(chapterList[29])
+	# tạo chapterList từ các chương riêng lẻ
+	# chapterList = [chapterList[1], chapterList[2], chapterList[4]]
 
-	# chapterList = [chapterList[11], chapterList[17], chapterList[20], chapterList[23]]
-
+	# chạy đa luồng lấy tất cả các chương trong chapterlist
 	with concurrent.futures.ThreadPoolExecutor() as executor:
 		results = executor.map(getQuestionsOfChapter, chapterList)
 
-	# for i in range(19):
-	# 	questionList = getQuestionsOnePage('https://www.neetprep.com/questions/54-Chemistry/674-Chemistry-Everyday-Life?courseId=8&pageNo=' + str(i+1), 'DemoData')
+	for chapter in chapterList: # kiểm tra các chương lấy bị lỗi
+		if path.exists(chapter.chapterName + '.docx') is False:
+			print('Error chapter: ' + chapter.chapterName + '_' + str(chapterList.index(chapter)))
+
+	# Chạy vòng lặp lấy các trang trong 1 chương để kiểm tra lỗi trang nào
+	# for i in range(27):
+	# 	questionList = getQuestionsOnePage('https://www.neetprep.com/questions/54-Chemistry/647-Classification-Elements-Periodicity-Properties?courseId=8&pageNo=' + str(i+1), 'DemoData')
 	# 	writeDocFile(renumberQuestionList(questionList), 'DemoData')
 
-	# questionList = getQuestionsOnePage('https://www.neetprep.com/questions/54-Chemistry/674-Chemistry-Everyday-Life?courseId=8&pageNo=5', 'DemoData')
+	# lấy câu hỏi trong 1 trang cụ thể
+	# questionList = getQuestionsOnePage('https://www.neetprep.com/questions/54-Chemistry/647-Classification-Elements-Periodicity-Properties?courseId=8&pageNo=27', 'DemoData')
 	# writeDocFile(renumberQuestionList(questionList), 'DemoData')
