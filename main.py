@@ -105,7 +105,7 @@ def writeElementListToCell(_elementList, cell):
 	if '<math>' in text or '<img>' in text or '<table>' in text:
 		stringList = re.split(r'<math>|<img>|<table>',text) # cắt chuỗi theo các cụm <math>|<img>|<table>
 		
-		# string trước đó
+		# get previou string
 		preString = '' 
 		for string in stringList[:-1]:
 			element = elementList[0] # lấy element đầu
@@ -156,7 +156,7 @@ def textToDocTable(text, cell):
 def renumberQuestionList(questionList):
 	newNo = int(questionList[0].qNo)
 
-	# lấy các câu hỏi đúng vào questionList2
+	# put available question into questionList2
 	questionList2 = []
 	for question in questionList:
 		if question.text[0] == '' or question.a[0] == '' or question.b[0] == '' or question.c[0] == '' or question.d[0] == '':				
@@ -215,22 +215,22 @@ def writeDocFile(questionList, chapterName):
 		row[0].text = question.qNo
 		print(question.qNo)
 
-		# ghi question text vào cột 1
+		# put question text into column 1
 		writeElementListToCell(question.text, row[1])
 
-		# ghi question a vào cột 2
+		# put question a into column 2
 		writeElementListToCell(question.a, row[2])
 
-		# ghi question b vào cột 3
+		# put question b into column 3
 		writeElementListToCell(question.b, row[3])
 
-		# ghi question c vào cột 4
+		# put question c into column 4
 		writeElementListToCell(question.c, row[4])
 
-		# ghi question d vào cột 5
+		# put question d into column 5
 		writeElementListToCell(question.d, row[5])
 
-		# ghi question e vào cột 6
+		# put question e into column 6
 		writeElementListToCell(question.e, row[6])
 
 		row[7].text = question.correct
@@ -263,13 +263,13 @@ def getQuestionsOnePage(pageURL, chapterName):
 
 		questionTextHtml = questionHtml.find('div', class_='question-text').find('span')
 
-		# bỏ thẻ <br>
+		# scrap <br>
 		for br in questionTextHtml('br'):
 			br.replace_with('\n')
 
 		# get Question text and table
 
-		# lấy textHtml sau khi bỏ thẻ br:
+		# get textHtml:
 		textHtml = questionTextHtml.find_all(recursive=False)
 
 
@@ -292,28 +292,24 @@ def getQuestionsOnePage(pageURL, chapterName):
 
 				questionTextList = []
 
-				# lấy table
+				# get table
 				if element.name == 'table':
 					questionTextList.append(htmlTableToText(element))
 
-				# lấy thẻ p
+				# get p tag
 				elif element.name == 'p':
-					# bỏ thẻ p có từ 2 &nbsp; trở lên
-					# if '\xa0\xa0' in str(element) or '\xa0 \xa0' in str(element):
-					# 	element.decompose()
-					# 	break
 
-					# Lấy tất cả element con trực tiếp của mỗi thẻ p (diagram, mathjax)
+					# get all direct child of p tag (diagram, mathjax)
 					childElements = element.find_all(recursive=False)
 
-					# nếu có element con
+					# if there is any child
 					if len(childElements) > 0:
 						for child in childElements:
 							if child.name == 'span' and child.has_attr('class') and child['class'][0] == 'mjx-chtml': # con là span và class MathJax
 								questionTextList.append(child['data-mathml'])		# nối chuỗi MathJax vào questionTextList
 								child.replace_with('<math>')	# thay tag span thành <math>
 
-							elif child.name == 'img': # con là img
+							elif child.name == 'img': # img
 								try:
 									img_data = requests.get(child['src'], timeout=2).content
 									with open('Images/' + chapterName + '_' + q.qNo + '_' + str(imageCount) + '.png', 'wb') as handler: # ghi file ảnh
@@ -330,18 +326,18 @@ def getQuestionsOnePage(pageURL, chapterName):
 							elif child.name == 'b' or child.name == 'i' or (child.name == 'span' and child.text is not None): 
 								child.replace_with(child.text)
 
-							else: #còn lại xóa đi
+							else: 
 								child.decompose()
 
-					# sau cùng chèn p text vào đầu questionTextList
+					# insert p text into first of questionTextList
 					if element.text != '':
 						questionTextList.insert(0, element.text.replace('\xa0', ''))
 
-				# nếu không có text trong questionTextList
+				# questiontextlist is empty
 				if len(questionTextList) == 0:
 					continue
 
-				# xét questionText để phân loại là text hoặc các option
+				# put questionText into question text or question options
 				try:
 					if '1.' in questionTextList[0] and questionTextList[0].index('1.') == 0:
 						questionTextList[0] = questionTextList[0][2:].strip()
@@ -389,7 +385,7 @@ def getQuestionsOnePage(pageURL, chapterName):
 						q.text[0] += questionTextList[0]
 						q.text.extend(questionTextList[1:])	# nối thêm questionTextList với các p textList mới
 				except:
-					# đặt q.text là list với chuỗi rỗng
+					# create q.text with empty string in list
 					q.text = ['']
 
 					print('Error qText: ' + q.qNo + '_' + chapterName)
@@ -438,25 +434,25 @@ if __name__ == '__main__':
 				# print(chapter.chapterName)
 				chapterList.append(chapter)
 
-	# lấy câu hỏi trong 1 chương cụ thể
+	# get question of particular chapter
 	# getQuestionsOfChapter(chapterList[2])
 
-	# tạo chapterList từ các chương riêng lẻ
+	# create list from particular chapters
 	# chapterList = [chapterList[1], chapterList[2], chapterList[4]]
 
-	# chạy đa luồng lấy tất cả các chương trong chapterlist
+	# run multithread to get from list of chapter
 	with concurrent.futures.ThreadPoolExecutor() as executor:
 		results = executor.map(getQuestionsOfChapter, chapterList)
 
-	for chapter in chapterList: # kiểm tra các chương lấy bị lỗi
+	for chapter in chapterList: # check error chapter when finish
 		if path.exists(chapter.chapterName + '.docx') is False:
 			print('Error chapter: ' + chapter.chapterName + '_' + str(chapterList.index(chapter)))
 
-	# Chạy vòng lặp lấy các trang trong 1 chương để kiểm tra lỗi trang nào
+	# run loop all page in 1 chapter to find out error page
 	# for i in range(27):
 	# 	questionList = getQuestionsOnePage('https://www.neetprep.com/questions/54-Chemistry/647-Classification-Elements-Periodicity-Properties?courseId=8&pageNo=' + str(i+1), 'DemoData')
 	# 	writeDocFile(renumberQuestionList(questionList), 'DemoData')
 
-	# lấy câu hỏi trong 1 trang cụ thể
+	# get question in 1 particular page
 	# questionList = getQuestionsOnePage('https://www.neetprep.com/questions/54-Chemistry/647-Classification-Elements-Periodicity-Properties?courseId=8&pageNo=27', 'DemoData')
 	# writeDocFile(renumberQuestionList(questionList), 'DemoData')
