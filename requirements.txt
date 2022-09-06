@@ -4,7 +4,6 @@ beautifulsoup4==4.11.1
 bs4==0.0.1
 certifi==2022.6.15
 charset-normalizer==2.1.1
-docx==0.2.4
 exception==0.1.0
 h11==0.13.0
 idna==3.3
