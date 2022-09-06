@@ -276,7 +276,7 @@ def getQuestionsOnePage(pageURL, chapterName):
 		if len(textHtml) == 0:
 			allText = questionTextHtml.text.replace('\xa0', '')
 			stringList = re.split(r'\n *1.|\n *\(1\)|\n *2.|\n *\(2\)|\n *3.|\n *\(3\)|\n *4.|\n *\(4\)|\n *5.|\n *\(5\)',allText)
-			print(stringList[0])
+			# print(stringList[0])
 			q.text[0] = stringList[0]
 			q.a[0] = stringList[1]
 			q.b[0] = stringList[2]
@@ -320,8 +320,8 @@ def getQuestionsOnePage(pageURL, chapterName):
 								except:
 									child.decompose()
 									print('Error image: ' + q.qNo + '_' + chapterName)
-									questionTextList.append('')
-									continue
+									questionTextList = ['error']
+									break
 									
 							elif child.name == 'b' or child.name == 'i' or (child.name == 'span' and child.text is not None): 
 								child.replace_with(child.text)
@@ -330,7 +330,7 @@ def getQuestionsOnePage(pageURL, chapterName):
 								child.decompose()
 
 					# insert p text into first of questionTextList
-					if element.text != '':
+					if element.text != '' and questionTextList[0] != 'error':
 						questionTextList.insert(0, element.text.replace('\xa0', ''))
 
 				# questiontextlist is empty
@@ -381,6 +381,9 @@ def getQuestionsOnePage(pageURL, chapterName):
 								q.e = ['5']
 						else:
 							continue
+					elif questionTextList[0] == 'error':
+						q.text = ['']
+						break
 					else:
 						q.text[0] += questionTextList[0]
 						q.text.extend(questionTextList[1:])	# nối thêm questionTextList với các p textList mới
@@ -389,7 +392,7 @@ def getQuestionsOnePage(pageURL, chapterName):
 					q.text = ['']
 
 					print('Error qText: ' + q.qNo + '_' + chapterName)
-					pass
+					break
 
 		# get correct answer
 		if len(questionHtml.find_all('div', class_='_2eaw _2kqr')) > 0:
