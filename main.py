@@ -248,8 +248,8 @@ def writeDocFile(questionList, chapterName):
 
 def getQuestionsOnePage(pageURL, chapterName):
 	print(pageURL)
-	soup = getSoupWithAnswer(pageURL)
-	# soup = getSoup(pageURL)
+	# soup = getSoupWithAnswer(pageURL)
+	soup = getSoup(pageURL)
 
 	questionList = []
 
@@ -330,7 +330,7 @@ def getQuestionsOnePage(pageURL, chapterName):
 								child.decompose()
 
 					# insert p text into first of questionTextList
-					if element.text != '' and questionTextList[0] != 'error':
+					if element.text != '':
 						questionTextList.insert(0, element.text.replace('\xa0', ''))
 
 				# questiontextlist is empty
@@ -339,7 +339,10 @@ def getQuestionsOnePage(pageURL, chapterName):
 
 				# put questionText into question text or question options
 				try:
-					if '1.' in questionTextList[0] and questionTextList[0].index('1.') == 0:
+					if 'error' in questionTextList:
+						q.text = ['']
+						break
+					elif '1.' in questionTextList[0] and questionTextList[0].index('1.') == 0:
 						questionTextList[0] = questionTextList[0][2:].strip()
 						q.a = questionTextList
 					elif '(1)' in questionTextList[0] and questionTextList[0].index('(1)') == 0:
@@ -381,9 +384,6 @@ def getQuestionsOnePage(pageURL, chapterName):
 								q.e = ['5']
 						else:
 							continue
-					elif questionTextList[0] == 'error':
-						q.text = ['']
-						break
 					else:
 						q.text[0] += questionTextList[0]
 						q.text.extend(questionTextList[1:])	# nối thêm questionTextList với các p textList mới
@@ -438,18 +438,18 @@ if __name__ == '__main__':
 				chapterList.append(chapter)
 
 	# get question of particular chapter
-	# getQuestionsOfChapter(chapterList[2])
+	getQuestionsOfChapter(chapterList[0])
 
 	# create list from particular chapters
 	# chapterList = [chapterList[1], chapterList[2], chapterList[4]]
 
 	# run multithread to get from list of chapter
-	with concurrent.futures.ThreadPoolExecutor() as executor:
-		results = executor.map(getQuestionsOfChapter, chapterList)
+	# with concurrent.futures.ThreadPoolExecutor() as executor:
+	# 	results = executor.map(getQuestionsOfChapter, chapterList)
 
-	for chapter in chapterList: # check error chapter when finish
-		if path.exists(chapter.chapterName + '.docx') is False:
-			print('Error chapter: ' + chapter.chapterName + '_' + str(chapterList.index(chapter)))
+	# for chapter in chapterList: # check error chapter when finish
+	# 	if path.exists(chapter.chapterName + '.docx') is False:
+	# 		print('Error chapter: ' + chapter.chapterName + '_' + str(chapterList.index(chapter)))
 
 	# run loop all page in 1 chapter to find out error page
 	# for i in range(27):
