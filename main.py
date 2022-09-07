@@ -248,8 +248,8 @@ def writeDocFile(questionList, chapterName):
 
 def getQuestionsOnePage(pageURL, chapterName):
 	print(pageURL)
-	# soup = getSoupWithAnswer(pageURL)
-	soup = getSoup(pageURL)
+	soup = getSoupWithAnswer(pageURL)
+	# soup = getSoup(pageURL)
 
 	questionList = []
 
